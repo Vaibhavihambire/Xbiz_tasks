@@ -1,0 +1,12 @@
+min
+general
+rogramming QueryPython SQL MS SQL Server JavaScript
+anguages
+ata Analysis ML
+Pandas NumPy Scikit-learn Matplotlib Seaborn Feature Engineering
+isualization BI Tools Power BI Tableau Excel Pivot Tables Charts VLOOKUP Streamlit
+ent
+ools Platforms
+Jupyter Notebook Google Colab Git GitHub VS Code XAMPP
+oft Skills
+Cross-functional collaboration Technical reporting Dashboard design Communication Ownership
