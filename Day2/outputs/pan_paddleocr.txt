@@ -5,7 +5,7 @@ FaRTST
 HRA
 HRCOR
 INCOME TAX DEPARTMENT
-GOVT. OF
+GOVT OF
 FINDIA
 2rO
 Jalld
@@ -14,7 +14,12 @@ Jalld
 CTs
 Permanent Account Number Card
 NILPS5066N
+Hl4T/Name
 ROHIT KUMAR SINGH
+/ Fathers Name
 LAKHAN SINGH
 hal
+/ Date of Birth
 70999
+01/01/2002
+Kia / Signature

@@ -55,63 +55,63 @@ def smart_resize_for_ocr(img, min_h=700, max_h=1200):
     return resized
 
 
-# Define a function to estimate the skew angle of a grayscale or binary image
-def estimate_skew_angle(gray):
-    # Find coordinates of all pixels which are greater than 0 (non-background)
-    coords = np.column_stack(np.where(gray > 0))
+# # Define a function to estimate the skew angle of a grayscale or binary image
+# def estimate_skew_angle(gray):
+#     # Find coordinates of all pixels which are greater than 0 (non-background)
+#     coords = np.column_stack(np.where(gray > 0))
 
-    # If there are no such pixels, return 0.0 angle (no information)
-    if coords.size == 0:
-        return 0.0
+#     # If there are no such pixels, return 0.0 angle (no information)
+#     if coords.size == 0:
+#         return 0.0
 
-    # Use minAreaRect to get the minimum area bounding box for these points
-    rect = cv2.minAreaRect(coords)
+#     # Use minAreaRect to get the minimum area bounding box for these points
+#     rect = cv2.minAreaRect(coords)
 
-    # The third value of rect is the angle
-    angle = rect[-1]
+#     # The third value of rect is the angle
+#     angle = rect[-1]
 
-    # OpenCV returns angle in a specific range; we adjust it to a more natural value
-    # If angle is less than -45 degrees, we adjust it using -(90 + angle)
-    if angle < -45:
-        angle = -(90 + angle)
-    # Otherwise we simply take negative of the angle
-    else:
-        angle = -angle
+#     # OpenCV returns angle in a specific range; we adjust it to a more natural value
+#     # If angle is less than -45 degrees, we adjust it using -(90 + angle)
+#     if angle < -45:
+#         angle = -(90 + angle)
+#     # Otherwise we simply take negative of the angle
+#     else:
+#         angle = -angle
 
-    # Return the final estimated skew angle
-    return angle
+#     # Return the final estimated skew angle
+#     return angle
 
 
-# Define a function to deskew image only when skew is actually present
-def smart_deskew(gray, angle_threshold=1.5):
-    # First, estimate the skew angle of the given grayscale image
-    angle = estimate_skew_angle(gray)
+# # Define a function to deskew image only when skew is actually present
+# def smart_deskew(gray, angle_threshold=1.5):
+#     # First, estimate the skew angle of the given grayscale image
+#     angle = estimate_skew_angle(gray)
 
-    # If the absolute value of angle is very small (less than threshold),
-    # we consider the image already straight and return it as is
-    if abs(angle) < angle_threshold:
-        return gray
+#     # If the absolute value of angle is very small (less than threshold),
+#     # we consider the image already straight and return it as is
+#     if abs(angle) < angle_threshold:
+#         return gray
 
-    # Get the height and width of the image
-    (h, w) = gray.shape[:2]
+#     # Get the height and width of the image
+#     (h, w) = gray.shape[:2]
 
-    # Calculate the center of the image (needed for rotation)
-    center = (w // 2, h // 2)
+#     # Calculate the center of the image (needed for rotation)
+#     center = (w // 2, h // 2)
 
-    # Get the rotation matrix using the center and angle
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+#     # Get the rotation matrix using the center and angle
+#     M = cv2.getRotationMatrix2D(center, angle, 1.0)
 
-    # Apply the rotation using warpAffine to get rotated (deskewed) image
-    rotated = cv2.warpAffine(
-        gray,           # input image
-        M,              # rotation matrix
-        (w, h),         # output image size
-        flags=cv2.INTER_CUBIC,            # interpolation method
-        borderMode=cv2.BORDER_REPLICATE   # fill border by replicating edge
-    )
+#     # Apply the rotation using warpAffine to get rotated (deskewed) image
+#     rotated = cv2.warpAffine(
+#         gray,           # input image
+#         M,              # rotation matrix
+#         (w, h),         # output image size
+#         flags=cv2.INTER_CUBIC,            # interpolation method
+#         borderMode=cv2.BORDER_REPLICATE   # fill border by replicating edge
+#     )
 
-    # Return the deskewed image
-    return rotated
+#     # Return the deskewed image
+#     return rotated
 
 # Define a helper function to clean OCR text by removing unwanted characters
 def clean_ocr_text(text: str) -> str:
