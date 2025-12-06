@@ -1,0 +1,9 @@
+SKILLS
+Programming QueryPython SQL MS SOL Server JavaScript
+Languages
+Data Analysis ML Pandas NumPy Scikit-learn Matplotlib Seaborn Feature Engineering
+Visualization BI Tools Power BI Tableau Excel Pivot Tables Charts VLOOKUP Streamlit
+Web Backend Develop-Flask RESTful APIs PHP Yii2 MySQL HTML/CSS JavaScript
+ment
+Tools Platforms Jupyter Notebook Google Colab Git GitHub VS Code XAMPP
+Soft Skills Cross-functional collaboration Technical reporting Dashboard design Communication Ownership
