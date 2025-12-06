@@ -1,13 +1,10 @@
 
-# Import typing for type hints
 from typing import Any, List
-# Import PaddleOCR class
 from paddleocr import PaddleOCR
+import numpy as np
+from PIL import Image
+import cv2
 
-
-# Create a global PaddleOCR instance for performance
-# use_angle_cls=True  -> also detects rotation per text box
-# lang='en'           -> English language model
 _ocr = PaddleOCR(
     use_angle_cls=True,
     lang="en",
@@ -15,26 +12,14 @@ _ocr = PaddleOCR(
 )
 
 
-# Define a helper function to extract text pieces from PaddleOCR raw result
 def extract_texts_from_ocr_result(result: Any) -> List[str]:
-    """
-    This function walks through the raw OCR output (which can be nested lists/dicts)
-    and collects all meaningful text strings.
-    """
-
-    # Define an inner recursive function
     def extract(obj: Any):
-        # Create a list to collect found text strings
         texts = []
 
-        # Case 1: if object is a string and not empty after stripping
         if isinstance(obj, str) and obj.strip():
-            # Add the cleaned string to our list
             texts.append(obj.strip())
 
-        # Case 2: if object is a dictionary
         elif isinstance(obj, dict):
-            # First, look for common keys that may contain text
             for key in ("text", "rec_text", "transcription", "sentence", "text_line"):
                 # If such a key exists and is a non-empty string, add it
                 if key in obj and isinstance(obj[key], str) and obj[key].strip():
@@ -83,23 +68,88 @@ def extract_texts_from_ocr_result(result: Any) -> List[str]:
 
 
 # Define a function to run PaddleOCR on an image path
-def run_paddleocr(image_path: str, lang: str = "en") -> str:
+def run_paddleocr(image_input, lang: str = "en") -> str:
     """
     No manual preprocessing is done here; PaddleOCR handles detection and recognition.
     """
-    # If this PaddleOCR object supports predict(), use it
-    if hasattr(_ocr, "predict"):
-        # Call predict() using the image path
-        ocr_raw = _ocr.predict(image_path)
-    else:
-        # Otherwise fall back to ocr() method
-        ocr_raw = _ocr.ocr(image_path)
+    # Helper: if numpy array in BGR, convert to RGB for Paddle if needed
+    try:
+        # Case: filesystem path (keep original behavior)
+        if isinstance(image_input, str):
+            if hasattr(_ocr, "predict"):
+                ocr_raw = _ocr.predict(image_input)
+            else:
+                ocr_raw = _ocr.ocr(image_input)
 
-    # Use the helper to extract text strings from raw result
-    lines = extract_texts_from_ocr_result(ocr_raw)
+        # Case: PIL Image -> convert to numpy RGB
+        elif isinstance(image_input, Image.Image):
+            arr = np.array(image_input.convert("RGB"))
 
-    # Join all lines with newline characters to form a single big string
-    text = "\n".join(lines)
+            # Ensure contiguous uint8
+            arr_rgb = np.ascontiguousarray(arr, dtype=np.uint8)
 
-    # Return the final text extracted by PaddleOCR
-    return text
+            if hasattr(_ocr, "predict"):
+                # NOTE: pass a list (batch) to predict
+                ocr_raw = _ocr.predict([arr_rgb])
+            else:
+                ocr_raw = _ocr.ocr(arr_rgb)
+
+        # Case: numpy array (likely BGR from OpenCV)
+        elif isinstance(image_input, np.ndarray):
+            arr = image_input
+            # If it's BGR (OpenCV style), convert to RGB
+            if arr.ndim == 3 and arr.shape[2] == 3:
+                arr_rgb = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
+            else:
+                # grayscale or other -> convert to 3-channel RGB
+                if arr.ndim == 2:
+                    arr = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
+                arr_rgb = arr
+
+            # Ensure contiguous and uint8
+            arr_rgb = np.ascontiguousarray(arr_rgb, dtype=np.uint8)
+
+            if hasattr(_ocr, "predict"):
+                ocr_raw = _ocr.predict([arr_rgb])   # pass as batch list
+            else:
+                ocr_raw = _ocr.ocr(arr_rgb)
+
+        else:
+            raise ValueError("Unsupported input type for PaddleOCR: path, PIL.Image, or numpy array expected")
+
+        # extract lines
+        lines = extract_texts_from_ocr_result(ocr_raw)
+        text = "\n".join(lines)
+        return text
+
+    except Exception:
+        # If an in-memory approach failed for any reason, try the safe path-based fallback (if input was array)
+        # This fallback will save to a temp PNG and call the old path-based method.
+        try:
+            # if input is array or PIL, write to a temp file and call the original file-path logic
+            uid = np.random.randint(0, 2**31)
+            tmp_name = f"paddle_tmp_{uid}.png"
+            tmp_path = tmp_name
+            if isinstance(image_input, np.ndarray):
+                rgb = image_input
+                if rgb.ndim == 3 and rgb.shape[2] == 3:
+                    rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
+                Image.fromarray(np.ascontiguousarray(rgb)).save(tmp_path)
+            elif isinstance(image_input, Image.Image):
+                image_input.convert("RGB").save(tmp_path)
+            else:
+                # nothing to fallback to
+                raise
+
+            # call original path-based API
+            if hasattr(_ocr, "predict"):
+                ocr_raw = _ocr.predict(tmp_path)
+            else:
+                ocr_raw = _ocr.ocr(tmp_path)
+
+            os.remove(tmp_path)
+            lines = extract_texts_from_ocr_result(ocr_raw)
+            return "\n".join(lines)
+        except Exception:
+            # re-raise the original exception to let caller handle/log it
+            raise

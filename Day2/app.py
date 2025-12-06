@@ -1,138 +1,235 @@
-# app.py
-# This file defines a simple Flask API with one endpoint /ocr
-# It accepts an image file, runs three OCR engines (Tesseract, EasyOCR, PaddleOCR),
-# saves results as .txt files, and returns a JSON response.
-
-# Import os to handle file paths and directories
 import os
+import uuid
+import base64
+import traceback
+from pathlib import Path
+from io import BytesIO
+from PIL import Image, ImageSequence
+import numpy as np
+import cv2
+from pdf2image import convert_from_path
+import json
 
-# Import Flask, request, jsonify to build the API
+
 from flask import Flask, request, jsonify
-# Import secure_filename to safely handle uploaded filenames
 from werkzeug.utils import secure_filename
 
-# Import OpenCV to read image files
-import cv2
-
-# Import OCR functions from ocr_engines package
 from ocr_engines.tesseract_ocr import run_tesseract
 from ocr_engines.easyocr_ocr import run_easyocr
 from ocr_engines.paddleocr_ocr import run_paddleocr
 from ocr_engines.core import load_image_bgr, clean_ocr_text, remove_duplicate_lines
 
-import sys, os
+import sys
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
-# Create a Flask application instance
 app = Flask(__name__)
 
-# Define output directory for saving .txt files
+# Output directories
 OUTPUT_DIR = "outputs"
-
-# Ensure that the output directory exists (create if it does not exist)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# Selection of ocr engine
+ENGINE_MAP = {
+    0: ("tesseract", run_tesseract),
+    1: ("easyocr", run_easyocr),
+    2: ("paddleocr", run_paddleocr),
+}
 
-# Define a route for OCR at path "/ocr" with POST method
+def pil_to_bgr_numpy(pil_img: Image.Image):
+    rgb = np.array(pil_img.convert("RGB"))
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    return bgr
+
+
+def iterate_pages_from_path(path: str):
+    ext = Path(path).suffix.lower()
+
+    # PDF path
+    if ext == ".pdf":
+        pages = convert_from_path(path, dpi=300)
+        for i, pil_page in enumerate(pages):
+            bgr = pil_to_bgr_numpy(pil_page)
+            yield i, bgr, None
+
+    # TIFF
+    elif ext in (".tif", ".tiff"):
+        pil_img = Image.open(path)
+        for i, page in enumerate(ImageSequence.Iterator(pil_img)):
+            bgr = pil_to_bgr_numpy(page)
+            yield i, bgr, None
+
+    # Single image formats supported by cv2
+    else:
+        # For webp etc, cv2.imread may handle, or PIL fallback
+        img = load_image_bgr(path)
+        if img is not None:
+            yield 0, img, None
+        else:
+            try:
+                pil_img = Image.open(path)
+                bgr = pil_to_bgr_numpy(pil_img)
+                yield 0, bgr, None
+            except Exception as e:
+                raise RuntimeError(f"Unsupported image format or cannot read file: {e}")
+
+
 @app.route("/ocr", methods=["POST"])
 def ocr_endpoint():
-    # Check if any file part named "file" is present in the request
-    if "file" not in request.files:
-        # If not present, return error response with status code 400
-        return jsonify({"error": "No file uploaded"}), 400
+    """
+      - JSON mode: {"filename":"C:/path/to/file.png", "typeofocr": 0}
+    """
+    data = request.get_json(silent=True)
+    uploaded_file = None
+    file_path = None
 
-    # Get the uploaded file from request
-    file = request.files["file"]
+    # Default engine is tesseract
+    typeofocr = 0
+    if data:
+        file_b64 = data.get("file_b64") 
+        file_path = data.get("filename")
+        typeofocr = int(data.get("typeofocr", 0))
+        if file_b64:
+            try:
+                if "," in file_b64 and file_b64.startswith("data:"):
+                    file_b64 = file_b64.split(",", 1)[1]
 
-    # Check if filename is empty
-    if file.filename == "":
-        # If empty, return error response with status code 400
-        return jsonify({"error": "Empty filename"}), 400
+                raw = base64.b64decode(file_b64)
+            except Exception as e:
+                traceback.print_exc()
+                return jsonify({"error": f"Invalid base64 data: {e}"}), 400
 
-    # Use secure_filename to sanitize the uploaded filename
-    filename = secure_filename(file.filename)
+            try:
+                uid = uuid.uuid4().hex
+                tmp_name = f"{uid}_upload.png"   # use png by default
+                temp_path = os.path.join(OUTPUT_DIR, tmp_name)
+                with open(temp_path, "wb") as f:
+                    f.write(raw)
+                file_path = temp_path
+            except Exception as e:
+                traceback.print_exc()
+                return jsonify({"error": f"Failed to write decoded base64 to temp file: {e}"}), 500
 
-    # Build a temporary path to save the uploaded image file
-    temp_path = os.path.join(OUTPUT_DIR, filename)
+        # If no base64 but filename provided in JSON -> use that path (dev/test only)
+        elif file_path:
+            file_path = file_path
+    else:
+        if "file" not in request.files:
+            return jsonify({"error": "No file provided (use JSON 'filename' or multipart 'file')" }), 400
+        uploaded_file = request.files["file"]
+        typeofocr = int(request.form.get("typeofocr", 0))
+    try:
+        typeofcr_int = int(typeofocr)
+    except Exception:
+        return jsonify({"error": "typeofocr must be integer 0/1/2"}), 400
 
-    # Save the uploaded file to the temporary path
-    file.save(temp_path)
+    if typeofcr_int not in ENGINE_MAP:
+        return jsonify({"error": f"typeofocr must be one of {list(ENGINE_MAP.keys())}"}), 400
 
-    # Default: treat every file as scanned document for better OCR accuracy
-    is_scanned = True
-    doc_type = "scanned"
+    if uploaded_file:
+        if uploaded_file.filename == "":
+            return jsonify({"error": "Empty filename in upload"}), 400
 
-    # Load image from disk using helper function (returns BGR image)
-    img = load_image_bgr(temp_path)
+        safe_name = secure_filename(uploaded_file.filename)
+        uid = uuid.uuid4().hex  # unique id upload
+        unique_filename = f"{uid}_{safe_name}"
+        temp_path = os.path.join(OUTPUT_DIR, unique_filename)
 
-    # If image could not be read, return error
-    if img is None:
-        return jsonify({"error": "Could not read image"}), 400
+        try:
+            uploaded_file.save(temp_path)
+            file_path = temp_path
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": f"Failed to save uploaded file: {str(e)}"}), 500
 
-    # Run Tesseract OCR on the image
-    tesseract_raw = run_tesseract(img, lang="eng", is_scanned=is_scanned)
-    # First clean unwanted characters from Tesseract text
-    tesseract_clean = clean_ocr_text(tesseract_raw)
-    # Then remove duplicate lines from Tesseract text
-    tesseract_text = remove_duplicate_lines(tesseract_clean)
+    if not file_path:
+        return jsonify({"error": "No filename provided"}), 400
 
-    # Run EasyOCR on the image
-    easyocr_raw = run_easyocr(img, is_scanned=is_scanned)
-    # First clean unwanted characters from EasyOCR text
-    easyocr_clean = clean_ocr_text(easyocr_raw)
-    # Then remove duplicate lines from EasyOCR text
-    easyocr_text = remove_duplicate_lines(easyocr_clean)
+    #base64
+    try:
+        with open(file_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        base64_info = {"base64_length": len(b64)}
+        # print(b64) 
+    except Exception as e:
+        #base64 computation failed but we can still attempt OCR.
+        traceback.print_exc()
+        base64_info = {"base64_error": str(e)}
 
-    # Run PaddleOCR on the image
-    # paddle_text = run_paddleocr(img, is_scanned=is_scanned)
-    paddle_raw = run_paddleocr(img, lang="en")
-    paddle_text = clean_ocr_text(paddle_raw)
+    engine_name, engine_func = ENGINE_MAP[typeofcr_int]
 
-    # Split the filename into base name and extension
-    base, _ = os.path.splitext(filename)
+    # Iterate pages and OCR each page. Collect per-page outputs and errors.
+    page_texts = []
+    page_errors = []
+    page_count = 0
 
-    # Build file paths for three .txt output files
-    tesseract_path = os.path.join(OUTPUT_DIR, f"{base}_tesseract.txt")
-    easyocr_path   = os.path.join(OUTPUT_DIR, f"{base}_easyocr.txt")
-    paddle_path    = os.path.join(OUTPUT_DIR, f"{base}_paddleocr.txt")
+    try:
+        for page_index, bgr_img, _temp in iterate_pages_from_path(file_path):
+            page_count += 1
+            page_id = f"p{page_index+1}"
+            try:
+                if engine_name == "paddleocr":
+                # pass numpy BGR image directly (run_paddleocr will convert to RGB internally)
+                    page_raw = engine_func(bgr_img, lang="en")
+                elif engine_name == "tesseract":
+                    page_raw = engine_func(bgr_img, lang="eng", is_scanned=True)
+                elif engine_name == "easyocr":
+                    page_raw = engine_func(bgr_img, is_scanned=True)
+                else:
+                    page_raw = ""
+                # clean per page, keep duplicates removal
+                page_clean = clean_ocr_text(page_raw)
+                page_texts.append((page_index+1, page_clean))
+            except Exception as e_page:
+                traceback.print_exc()
+                page_errors.append({"page": page_index+1, "error": str(e_page)})
+                page_texts.append((page_index+1, f"[error on page {page_index+1}: {e_page}]"))
 
-    # Save Tesseract result into its .txt file (UTF-8 encoding)
-    with open(tesseract_path, "w", encoding="utf-8") as f:
-        f.write(tesseract_text or "")
+    except Exception as e_iter:
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to iterate document pages: {e_iter}"}), 500
 
-    # Save EasyOCR result into its .txt file
-    with open(easyocr_path, "w", encoding="utf-8") as f:
-        f.write(easyocr_text or "")
+    combined_pages = []
+    for pnum, ptxt in page_texts:
+        combined_pages.append(f"--- PAGE {pnum} ---\n{ptxt}\n")
+    combined_text = "\n".join(combined_pages)
 
-    # Save PaddleOCR result into its .txt file
-    with open(paddle_path, "w", encoding="utf-8") as f:
-        f.write(paddle_text or "")
+    # Remove duplicate lines across the whole document
+    try:
+        final_text = remove_duplicate_lines(combined_text)
+    except Exception:
+        final_text = combined_text
 
-    # Build JSON response object
+    #cleaning text 
+    try:
+        cleaned = clean_ocr_text(final_text)
+        final_text = remove_duplicate_lines(cleaned)
+    except Exception as e:
+        traceback.print_exc()
+        final_text = final_text or ""
+        final_text = f"[cleaning_failed] {str(e)}\n\n{final_text}"
+
+    # Save output .txt 
+    try:
+        base_name = f"{Path(file_path).stem}"
+        out_base = f"{base_name}_{engine_name}_{uuid.uuid4().hex[:8]}"
+        out_txt_path = os.path.join(OUTPUT_DIR, f"{out_base}.txt")
+        with open(out_txt_path, "w", encoding="utf-8") as fout:
+            fout.write(final_text or "")
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to write output file: {str(e)}"}), 500
+
     response = {
-        "filename": filename,
-        "doc_type": doc_type,
-        "results": {
-            "tesseract": {
-                "text": tesseract_text,
-                "txt_file": tesseract_path
-            },
-            "easyocr": {
-                "text": easyocr_text,
-                "txt_file": easyocr_path
-            },
-            "paddleocr": {
-                "text": paddle_text,
-                "txt_file": paddle_path
-            }
-        }
+        "input_path": file_path,
+        "engine": engine_name,
+        "pages_processed": page_count,
+        "page_errors": page_errors,
+        "text_preview": final_text,
+        "txt_file": out_txt_path,
+        # "base64_info": base64_info
     }
-
-    # Return JSON response with status 200
-    return jsonify(response)
+    return jsonify(response), 200
 
 
-# Main block to run the Flask app if this file is executed directly
 if __name__ == "__main__":
-    # Run Flask app in debug mode on default port 5000
     app.run(debug=True)
