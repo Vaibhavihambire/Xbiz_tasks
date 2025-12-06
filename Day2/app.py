@@ -58,9 +58,7 @@ def iterate_pages_from_path(path: str):
             bgr = pil_to_bgr_numpy(page)
             yield i, bgr, None
 
-    # Single image formats supported by cv2
     else:
-        # For webp etc, cv2.imread may handle, or PIL fallback
         img = load_image_bgr(path)
         if img is not None:
             yield 0, img, None
@@ -108,8 +106,6 @@ def ocr_endpoint():
             except Exception as e:
                 traceback.print_exc()
                 return jsonify({"error": f"Failed to write decoded base64 to temp file: {e}"}), 500
-
-        # If no base64 but filename provided in JSON -> use that path (dev/test only)
         elif file_path:
             file_path = file_path
     else:
@@ -122,7 +118,7 @@ def ocr_endpoint():
     except Exception:
         return jsonify({"error": "typeofocr must be integer 0/1/2"}), 400
 
-    if typeofcr_int not in ENGINE_MAP:
+    if typeofocr not in ENGINE_MAP:
         return jsonify({"error": f"typeofocr must be one of {list(ENGINE_MAP.keys())}"}), 400
 
     if uploaded_file:
@@ -157,7 +153,7 @@ def ocr_endpoint():
 
     engine_name, engine_func = ENGINE_MAP[typeofcr_int]
 
-    # Iterate pages and OCR each page. Collect per-page outputs and errors.
+    #Collect per-page outputs and errors.
     page_texts = []
     page_errors = []
     page_count = 0
@@ -168,15 +164,24 @@ def ocr_endpoint():
             page_id = f"p{page_index+1}"
             try:
                 if engine_name == "paddleocr":
-                # pass numpy BGR image directly (run_paddleocr will convert to RGB internally)
-                    page_raw = engine_func(bgr_img, lang="en")
+                    tmp_page_name = f"{uuid.uuid4().hex}_{Path(file_path).stem}_page{page_index+1}.png"
+                    tmp_page_path = os.path.join(OUTPUT_DIR, tmp_page_name)
+                    # convert BGR back to RGB for PIL saving
+                    rgb = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+                    Image.fromarray(rgb).save(tmp_page_path)
+                    try:
+                        page_raw = engine_func(tmp_page_path, lang="en")
+                    finally:
+                        try:
+                            os.remove(tmp_page_path)
+                        except Exception:
+                            pass
                 elif engine_name == "tesseract":
                     page_raw = engine_func(bgr_img, lang="eng", is_scanned=True)
                 elif engine_name == "easyocr":
                     page_raw = engine_func(bgr_img, is_scanned=True)
                 else:
                     page_raw = ""
-                # clean per page, keep duplicates removal
                 page_clean = clean_ocr_text(page_raw)
                 page_texts.append((page_index+1, page_clean))
             except Exception as e_page:
@@ -193,7 +198,6 @@ def ocr_endpoint():
         combined_pages.append(f"--- PAGE {pnum} ---\n{ptxt}\n")
     combined_text = "\n".join(combined_pages)
 
-    # Remove duplicate lines across the whole document
     try:
         final_text = remove_duplicate_lines(combined_text)
     except Exception:
