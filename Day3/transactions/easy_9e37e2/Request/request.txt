@@ -1,0 +1,10 @@
+transaction_name: easy
+transaction_id: 9e37e2
+request_time: 2025-12-08 14:49:18
+
+--- request payload ---
+{
+  "filename": "C:\\Users\\vaibh\\Documents\\Xbiz_tasks\\Day2\\samples\\Input7.jpg",
+  "typeofocr": 1,
+  "transaction_name": "easy"
+}

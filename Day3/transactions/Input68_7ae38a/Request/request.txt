@@ -1,0 +1,10 @@
+transaction_name: Input68
+transaction_id: 7ae38a
+request_time: 2025-12-08 14:31:33
+
+--- request payload ---
+{
+  "filename": "C:\\Users\\vaibh\\Documents\\Xbiz_tasks\\Day2\\samples\\Input6.jpg",
+  "typeofocr": 1,
+  "transaction_name": "Input68"
+}

@@ -6,7 +6,7 @@ from paddleocr import PaddleOCR
 _ocr = PaddleOCR(
     use_angle_cls=True,
     lang="en",
-    rec_batch_num=16
+    rec_batch_num=4
 )
 
 

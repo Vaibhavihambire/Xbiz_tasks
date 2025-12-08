@@ -1,0 +1,60 @@
+transaction_id: 7a82e1
+engine: paddleocr
+started_at: 2025-12-08 14:34:04
+finished_at: 2025-12-08 14:35:07
+input_path: C:\Users\vaibh\Documents\Xbiz_tasks\Day2\samples\Doc1.pdf
+input_name: Doc1.pdf
+input_extension: pdf
+
+--- extracted text (preview) ---
+--- PAGE 1 ---
+min
+general
+HIRT
+HRCOR
+GOVERNMENT OF INDIA
+34R
+Aachal kumari
+Hllh:IPh
+Father :Manoj Ram
+f/DOB: 04/12/2006
+/Female
+4221 5455 0524
+371G41
+Malle
+3TT4
+PT
+3TFET
+THE UNION OF INDIA
+MAHARASHTRA STATE MOTOR DRIVING LICENCE
+DL No MH03 20080022135
+DO/:24-01-2007
+Valid Till : 23-01-2027 NT
+09-03-2011
+TR
+AED 15-03-2008
+FORM 1
+RULE 16 2
+AUTHORISATION TO DRIVE FOLLOWING CLASS
+OF VEHICLES THROUGHOUT INDIA
+COv
+DOI
+MCWG
+24-01-2007
+LMV
+TRANS
+10-03-2008
+DOB :01-12-1987
+BG
+Name
+BABU KHAN
+S/D/W of JAB
+
+--- extra info ---
+{
+  "pages_processed": 2,
+  "page_errors": [],
+  "base64_info": {
+    "base64_length": 290380
+  }
+}

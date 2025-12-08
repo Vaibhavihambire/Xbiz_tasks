@@ -1,0 +1,9 @@
+transaction_name: Doc1
+transaction_id: 55d45a
+request_time: 2025-12-08 14:37:01
+
+--- request payload ---
+{
+  "filename": "C:\\Users\\vaibh\\Documents\\Xbiz_tasks\\Day2\\samples\\Doc1.pdf",
+  "typeofocr": 0
+}

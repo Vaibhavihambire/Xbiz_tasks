@@ -1,0 +1,36 @@
+transaction_id: cee1d4
+engine: paddleocr
+started_at: 2025-12-08 14:47:44
+finished_at: 2025-12-08 14:47:55
+input_path: C:\Users\vaibh\Documents\Xbiz_tasks\Day2\samples\Input7.jpg
+input_name: Input7.jpg
+input_extension: jpg
+
+--- extracted text (preview) ---
+--- PAGE 1 ---
+min
+general
+UNION oF inDIA Driving LicenCe Tamil Nadu
+TN99 20190000999
+DLNo
+Date of Issue
+Valld Till
+22-02-2019
+12-12-2027
+Date of Birth
+13-12-1977
+8
+tarne
+ANURADHA P
+ass:
+Son/Daughter/Wife of
+PARTHIBAN G
+
+--- extra info ---
+{
+  "pages_processed": 1,
+  "page_errors": [],
+  "base64_info": {
+    "base64_length": 86028
+  }
+}

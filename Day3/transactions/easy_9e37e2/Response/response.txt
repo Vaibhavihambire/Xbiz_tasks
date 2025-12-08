@@ -1,0 +1,32 @@
+transaction_id: 9e37e2
+engine: easyocr
+started_at: 2025-12-08 14:49:18
+finished_at: 2025-12-08 14:49:27
+input_path: C:\Users\vaibh\Documents\Xbiz_tasks\Day2\samples\Input7.jpg
+input_name: Input7.jpg
+input_extension: jpg
+
+--- extracted text (preview) ---
+--- PAGE 1 ---
+Union Of India
+Driving Licence Tamil Nadu
+olna
+TN99 20190000999
+Drcctr
+Vd
+2202-2019
+12-12-2027
+Dddltd
+113 12-1977
+ANURADHA P
+So4uahecias
+PARTHIBANG
+
+--- extra info ---
+{
+  "pages_processed": 1,
+  "page_errors": [],
+  "base64_info": {
+    "base64_length": 86028
+  }
+}
