@@ -1,3 +1,4 @@
+from io import BytesIO
 import os
 import uuid
 import base64
@@ -14,8 +15,6 @@ from ocr_engines.tesseract_ocr import run_tesseract
 from ocr_engines.easyocr_ocr import run_easyocr
 from ocr_engines.paddleocr_ocr import run_paddleocr
 from ocr_engines.core import clean_ocr_text, remove_duplicate_lines, start_transaction, close_transaction, smart_resize_for_ocr
-
-
 from datetime import datetime
 
 app = Flask(__name__)
@@ -87,15 +86,11 @@ def iterate_pages_from_path(path):
 
 @app.route("/ocr", methods=["POST"])
 def ocr_endpoint():
-    """
-    - JSON mode: {"filename":"C:/path/to/file.png", "typeofocr": 0, "transaction_name": "vvvv"}
-    - Or multipart/form-data with 'file' and 'typeofocr' and optional 'transaction_name'
-    """
+
     data = request.get_json(silent=True)
     uploaded_file = None
     file_path = None
 
-    # Default engine is tesseract
     typeofocr = 0
     if data:
         file_b64 = data.get("file_b64")
@@ -147,15 +142,33 @@ def ocr_endpoint():
             return jsonify({"error": f"Invalid base64 data: {e}"}), 400
 
         try:
-            tmp_name = "requested.png"
-            temp_path = str(txn_req_dir / tmp_name)
+            # try to decide extension from provided filename first
+            provided_name = None
+            if data and data.get("filename"):
+                provided_name = Path(data.get("filename")).name
+
+            save_name = None
+            if provided_name and Path(provided_name).suffix:
+                save_name = provided_name
+            else:
+                if raw[:4] == b"%PDF":
+                    save_name = "requested.pdf"
+                else:
+                    try:
+                        img_try = Image.open(BytesIO(raw))
+                        save_name = "requested.png"
+                        img_try.close()
+                    except Exception:
+                        save_name = "requested.bin"
+
+            temp_path = str(txn_req_dir / save_name)
             with open(temp_path, "wb") as f:
                 f.write(raw)
             file_path = temp_path
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": f"Failed to write decoded base64 to transaction request file: {e}"}), 500
-
+    
     if uploaded_file:
         if uploaded_file.filename == "":
             return jsonify({"error": "Empty filename in upload"}), 400
@@ -175,7 +188,6 @@ def ocr_endpoint():
     if not file_path:
         return jsonify({"error": "No filename provided"}), 400
 
-    # base64 info 
     try:
         with open(file_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("utf-8")
@@ -197,11 +209,10 @@ def ocr_endpoint():
             page_count += 1
             page_id = f"p{page_index+1}"
             try:
-                if page_index == 0:
-                    pre_img = smart_resize_for_ocr(bgr_img, min_h=700, max_h=1200)
-                    pre_rgb = cv2.cvtColor(pre_img, cv2.COLOR_BGR2RGB)
-                    pre_save_path = txn_res_dir / "preprocessed.png"
-                    Image.fromarray(pre_rgb).save(pre_save_path, format="PNG")
+                pre_img = smart_resize_for_ocr(bgr_img, min_h=700, max_h=1200)
+                pre_rgb = cv2.cvtColor(pre_img, cv2.COLOR_BGR2RGB)
+                pre_save_path = txn_res_dir / f"preprocessed_p{page_index+1}.png"
+                Image.fromarray(pre_rgb).save(pre_save_path, format="PNG")
             except Exception:
                 traceback.print_exc()
 
@@ -255,6 +266,7 @@ def ocr_endpoint():
         final_text = final_text or ""
         final_text = f"[cleaning_failed] {str(e)}\n\n{final_text}"
 
+
     try:
         overall_finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         overall_meta = close_transaction(
@@ -273,7 +285,6 @@ def ocr_endpoint():
             },
         )
 
-        # Defensive cleanup: remove any per-page response/output files if present
         try:
             for p in (txn_res_dir.glob("response_p*.txt")):
                 try:
@@ -297,10 +308,9 @@ def ocr_endpoint():
     response = {
         "input_path": file_path,
         "engine": engine_name,
-        "pages_processed": page_count,
-        "page_errors": page_errors,
         "text_preview": final_text,
         "txt_file": out_txt_path,
+        "document_type": doc_type
     }
     return jsonify(response), 200
 

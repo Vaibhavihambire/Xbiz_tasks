@@ -1,0 +1,96 @@
+# paddleocr_ocr.py
+from typing import Any, List
+import cv2
+import numpy as np
+from paddleocr import PaddleOCR
+
+# PaddleOCR – CPU only
+_ocr = PaddleOCR(
+    use_angle_cls=True,
+    lang="en",
+    use_gpu=False,
+    show_log=False,
+    rec_batch_num=8
+)
+
+# -----------------------------------------
+# SAFE recursive text extraction (KEY FIX)
+# -----------------------------------------
+def extract_texts(obj: Any) -> List[str]:
+    texts = []
+
+    if obj is None:
+        return texts
+
+    # string
+    if isinstance(obj, str):
+        s = obj.strip()
+        if s:
+            texts.append(s)
+
+    # tuple/list
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            texts.extend(extract_texts(v))
+
+    # dict
+    elif isinstance(obj, dict):
+        for k in ("text", "rec_text", "transcription"):
+            if k in obj and isinstance(obj[k], str):
+                if obj[k].strip():
+                    texts.append(obj[k].strip())
+        for v in obj.values():
+            texts.extend(extract_texts(v))
+
+    return texts
+
+
+# -----------------------------------------
+# MAIN OCR FUNCTION
+# -----------------------------------------
+def run_paddleocr(img_bgr: np.ndarray) -> str:
+    if img_bgr is None:
+        return ""
+
+    # PaddleOCR expects color image
+    if len(img_bgr.shape) == 2:
+        img_bgr = cv2.cvtColor(img_bgr, cv2.COLOR_GRAY2BGR)
+
+    # Resize safely
+    h, w = img_bgr.shape[:2]
+    if max(h, w) > 1600:
+        scale = 1600 / max(h, w)
+        img_bgr = cv2.resize(
+            img_bgr,
+            (int(w * scale), int(h * scale)),
+            interpolation=cv2.INTER_CUBIC
+        )
+
+    # Run OCR
+    try:
+        result = _ocr.ocr(img_bgr, cls=True)
+    except Exception:
+        return ""
+
+    # Extract ALL text safely
+    texts = extract_texts(result)
+
+    # Clean junk
+    clean = []
+    for t in texts:
+        low = t.lower()
+        if low.endswith((".jpg", ".png", ".jpeg", ".bmp")):
+            continue
+        if "\\" in t:
+            continue
+        clean.append(t)
+
+    # Remove duplicates, preserve order
+    seen = set()
+    final = []
+    for t in clean:
+        if t not in seen:
+            seen.add(t)
+            final.append(t)
+
+    return "\n".join(final)

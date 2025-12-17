@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OCR Upload — Clean UI</title>
+  <style>
+    /* White / Black clean UI */
+    :root{
+      --bg:#ffffff;
+      --panel:#0b0b0b;
+      --muted:#666666;
+      --accent:#000000;
+      --accent-weak:#111111;
+      --input-bg:#f6f6f6;
+      --card-stroke: rgba(0,0,0,0.06);
+      --tag-bg: #000000;
+      --tag-color: #ffffff;
+      --success: #0b9e59;
+      --danger:#d32f2f;
+      --shadow: 0 8px 30px rgba(2,6,23,0.06);
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--panel); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;}
+    .wrap{max-width:980px; margin:28px auto; padding:18px;}
+    .card{background: #ffffff; border-radius:12px; padding:20px; box-shadow:var(--shadow); border:1px solid var(--card-stroke);}
+    h1{margin:0;font-size:22px; color:var(--accent-weak)}
+    p.lead{margin:8px 0 18px;color:var(--muted)}
+    .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+    label.small{display:block; font-size:13px; color:var(--muted); margin-bottom:6px}
+    .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px}
+    /* consistent input styling */
+    select, input[type=text], .drop, button {
+      font-family: inherit;
+      border-radius:10px;
+      border:1px solid var(--card-stroke);
+      padding:10px 12px;
+      outline: none;
+      transition: box-shadow .12s ease, transform .04s ease;
+      background: var(--input-bg);
+      color: var(--panel);
+      min-height:44px;
+      box-sizing: border-box;
+    }
+    select:focus, input[type=text]:focus { box-shadow: 0 6px 20px rgba(0,0,0,0.06); transform: translateY(-1px); }
+    input[type=file]{display:none;}
+    .drop{display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; cursor:pointer; min-width:260px; min-height:72px;}
+    .muted{color:var(--muted); font-size:13px}
+    button{background:var(--tag-bg); color:var(--tag-color); border:none; padding:10px 14px; cursor:pointer; font-weight:700; min-width:140px; box-shadow:none}
+    button:disabled{opacity:0.6; cursor:not-allowed}
+    .page-card{background:#fafafa; padding:12px; border-radius:8px; margin-bottom:10px; border:1px solid var(--card-stroke)}
+    .tag{display:inline-block; padding:6px 10px; border-radius:999px; background:var(--tag-bg); color:var(--tag-color); font-weight:700; margin-right:8px; font-size:13px}
+    .error{color:var(--danger)}
+    footer{margin-top:12px; color:var(--muted); font-size:13px}
+    .progress{height:8px; background:#f0f0f0; border-radius:999px; overflow:hidden; margin-top:8px}
+    .progress > i{display:block; height:100%; width:0%; background:linear-gradient(90deg,#000000,#333333); transition:width .2s ease}
+    pre.snippet{background:#ffffff; color:var(--panel); border-radius:6px; padding:10px; border:1px solid var(--card-stroke); max-height:220px; overflow:auto; white-space:pre-wrap; word-break:break-word; font-size:13px}
+    @media (max-width:720px){ .row{flex-direction:column; align-items:stretch} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>OCR Upload</h1>
+      <p class="lead">Upload a PDF or image (multi-page supported). You'll see detected document types per page and short text snippets.</p>
+
+      <div class="row" style="margin-bottom:14px;">
+        <div style="flex:1; min-width:180px;">
+          <label class="small">OCR Engine</label>
+          <select id="engine" aria-label="OCR engine">
+            <option value="0">0 — tesseract</option>
+            <option value="1">1 — easyocr</option>
+            <option value="2" selected>2 — paddleocr</option>
+          </select>
+        </div>
+
+        <div style="flex:1; min-width:180px;">
+          <label class="small">Transaction name (optional)</label>
+          <input id="txnname" type="text" placeholder="my_upload_01" />
+        </div>
+
+        <div style="min-width:260px;">
+          <label class="small">File</label>
+          <label class="drop" id="dropzone" tabindex="0" role="button" aria-label="Select file to upload">
+            <input id="fileinput" type="file" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff" />
+            <div id="droptext" style="font-weight:600; color:var(--accent-weak)">Click or drop file here</div>
+            <div class="muted" style="margin-top:6px; font-size:12px;">PDF, PNG, JPG, TIFF supported</div>
+          </label>
+        </div>
+      </div>
+
+      <div class="controls" style="margin-bottom:8px;">
+        <button id="uploadBtn">Upload & OCR</button>
+        <div id="status" class="muted">No file selected</div>
+      </div>
+
+      <div class="progress" style="display:none" id="progressWrap"><i id="progBar"></i></div>
+
+      <div id="results" style="display:none; margin-top:18px">
+        <h3 style="margin:0 0 8px; color:var(--accent-weak)">Results</h3>
+        <div id="overview" class="muted" style="margin-bottom:12px"></div>
+        <div id="pagesContainer"></div>
+      </div>
+
+      <div id="errorBox" style="margin-top:12px"></div>
+
+      <footer>
+        Save this file to your Flask app's <code>static/</code> folder and open <strong>http://127.0.0.1:5000/static/index.html</strong>
+      </footer>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // Change if your API runs somewhere else
+  const API_URL = 'http://127.0.0.1:5000/ocr';
+
+  const drop = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileinput');
+  const droptext = document.getElementById('droptext');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+  const pagesContainer = document.getElementById('pagesContainer');
+  const errorBox = document.getElementById('errorBox');
+  const progressWrap = document.getElementById('progressWrap');
+  const progBar = document.getElementById('progBar');
+
+  let currentFile = null;
+
+  // open file picker
+  drop.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', (ev) => setFile(ev.target.files[0]));
+
+  // drag/drop
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.style.border = '1px dashed rgba(0,0,0,0.12)'; });
+  drop.addEventListener('dragleave', (e) => { e.preventDefault(); drop.style.border = ''; });
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.style.border = '';
+    const f = (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) ? e.dataTransfer.files[0] : null;
+    if (f) setFile(f);
+  });
+
+  function setFile(f) {
+    currentFile = f;
+    if (!f) {
+      droptext.textContent = 'Click or drop file here';
+      statusEl.textContent = 'No file selected';
+      return;
+    }
+    droptext.textContent = `${f.name} (${Math.round(f.size/1024)} KB)`;
+    statusEl.textContent = `Selected: ${f.name}`;
+    errorBox.innerHTML = '';
+  }
+
+  uploadBtn.addEventListener('click', async () => {
+    // reset UI
+    errorBox.innerHTML = '';
+    resultsEl.style.display = 'none';
+    pagesContainer.innerHTML = '';
+    progBar.style.width = '0%';
+    progressWrap.style.display = 'none';
+
+    if (!currentFile) {
+      errorBox.innerHTML = '<div class="error">Please choose a file first.</div>';
+      return;
+    }
+
+    const engine = document.getElementById('engine').value || '2';
+    const txnname = document.getElementById('txnname').value || '';
+
+    const form = new FormData();
+    form.append('file', currentFile);
+    form.append('typeofocr', String(engine));
+    if (txnname) form.append('transaction_name', txnname);
+
+    statusEl.textContent = 'Uploading & OCR in progress...';
+    uploadBtn.disabled = true;
+
+    try {
+      // use XHR to show upload progress
+      await postWithProgress(API_URL, form, (pct) => {
+        progressWrap.style.display = 'block';
+        progBar.style.width = pct + '%';
+      });
+
+      // fetch response (POST returns JSON)
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        body: form,
+        mode: 'cors'
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(`Server error ${resp.status}: ${txt}`);
+      }
+
+      const json = await resp.json();
+
+      const overall = json.overall_document_types || (json.document_type ? [json.document_type] : []);
+      document.getElementById('overview').textContent = `Overall detected types: ${overall.join(', ') || 'none'}`;
+
+      const pages = json.pages || [];
+      if (pages.length === 0) {
+        pagesContainer.innerHTML = '<div class="muted">No per-page results returned by server.</div>';
+      } else {
+        pagesContainer.innerHTML = '';
+        for (const p of pages) {
+          const pc = document.createElement('div');
+          pc.className = 'page-card';
+          const hdr = document.createElement('div');
+          hdr.innerHTML = `<strong style="font-size:15px">Page ${p.page}</strong> <span style="margin-left:8px" class="muted">types: ${Array.isArray(p.document_types) ? p.document_types.join(', ') : (p.document_types||'unknown')}</span>`;
+          pc.appendChild(hdr);
+
+          if (Array.isArray(p.document_types)) {
+            const tagRow = document.createElement('div');
+            tagRow.style.margin = '8px 0';
+            for (const t of p.document_types) {
+              const tag = document.createElement('span');
+              tag.className = 'tag';
+              tag.textContent = t;
+              tagRow.appendChild(tag);
+            }
+            pc.appendChild(tagRow);
+          }
+
+          if (p.text) {
+            const snippet = document.createElement('pre');
+            snippet.className = 'snippet';
+            snippet.textContent = p.text.slice(0, 1200); // show shorter snippet
+            pc.appendChild(snippet);
+          }
+
+          pagesContainer.appendChild(pc);
+        }
+      }
+
+      resultsEl.style.display = 'block';
+      statusEl.textContent = 'Done';
+    } catch (err) {
+      console.error(err);
+      errorBox.innerHTML = `<div class="error">Upload/OCR failed: ${sanitize(err.message)}</div>`;
+      statusEl.textContent = 'Error';
+    } finally {
+      uploadBtn.disabled = false;
+      progressWrap.style.display = 'none';
+      progBar.style.width = '0%';
+    }
+  });
+
+  // helper: sanitize text for HTML
+  function sanitize(s){ return String(s || '').replace(/[<>&"]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+  // helper: emulate upload progress using XMLHttpRequest
+  function postWithProgress(url, formData, onProgress){
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.withCredentials = false;
+      xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.response);
+        } else {
+          reject(new Error(`Server returned ${xhr.status}: ${xhr.responseText || xhr.statusText}`));
+        }
+      };
+      xhr.onerror = function() { reject(new Error('Network error')); };
+      xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable && typeof onProgress === 'function') {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          onProgress(pct);
+        }
+      };
+      try {
+        xhr.send(formData);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  // allow pressing Enter in txnname to trigger upload
+  document.getElementById('txnname').addEventListener('keydown', (e) => { if (e.key === 'Enter') uploadBtn.click(); });
+
+})();
+</script>
+</body>
+</html>
